@@ -1,3 +1,7 @@
+// === Functional stateless component that shows a locked-out message to users ===
+// This component is conditionally rendered when the backend (via /survey-status) marks the survey as "closed"
+// ✏️ You can reuse or adapt this component to show "maintenance mode", "feature disabled", or custom user blocks.
+
 const Closed = () => {
   return (
     <div style={{ textAlign: 'center', padding: '2rem' }}>
