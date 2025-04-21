@@ -1,3 +1,6 @@
+// App.js — Main router for the application.
+// If adding/removing routes or roles, ensure they’re declared and guarded properly.
+
 // App.js
 import React from 'react';
 import {

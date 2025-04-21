@@ -1,3 +1,6 @@
+// Login.js — Handles user authentication (manual login and sign-up)
+// If login/signup logic changes, update AuthContext and backend Cognito/Amplify config.
+
 // Updated Login.js with Sign-up functionality
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';

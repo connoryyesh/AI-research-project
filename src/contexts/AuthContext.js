@@ -1,3 +1,6 @@
+// AuthContext.js — Provides global auth state and role context.
+// If the structure of the user object changes, update context consumers accordingly.
+
 // contexts/AuthContext.js
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { 

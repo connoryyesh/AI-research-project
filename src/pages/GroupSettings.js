@@ -1,75 +1,116 @@
+// GroupSettings.js — Allows researchers to configure experiment prompts.
+// Update here to change how AI prompts are defined, saved, or rendered.
+
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
-const GroupSettings = ({ groupId }) => {
-  // Replace with your actual group ID if not passed via props
-  // const groupId = '12345';
+const API_BASE_URL = 'https://8rtdjjqrv7.execute-api.us-east-2.amazonaws.com';
 
-  // The base API endpoint
-  const API_BASE_URL = 'https://8rtdjjqrv7.execute-api.us-east-2.amazonaws.com';
-  // Construct the full config endpoint for the given group
-  const configEndpoint = `${API_BASE_URL}/research-groups/${groupId}/config`;
-
-  // Global settings
-  const [fontFace, setFontFace] = useState('Arial');
-  const [colorScheme, setColorScheme] = useState('#500000');
-
-  // Per-question settings
+const GroupSettings = () => {
   const [questions, setQuestions] = useState([]);
-
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Fetch existing settings on mount
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        const response = await axios.get(configEndpoint);
-        const data = response.data;
-        setFontFace(data.fontFace || 'Arial');
-        setColorScheme(data.colorScheme || '#500000');
-        setQuestions(data.questions || []);
+        const res = await axios.get(`${API_BASE_URL}/research-groups/all`);
+        const data = Array.isArray(res.data) ? res.data : [];
+
+        const all = [];
+        data.forEach(group => {
+          const qs = group.questionsJson ? JSON.parse(group.questionsJson) : [];
+          qs.forEach(q => {
+            all.push({
+              ...q,
+              fontFace: q.fontFace || group.fontFace || 'Arial',
+              colorScheme: q.colorScheme || group.colorScheme || '#000000',
+              groupId: group.groupId,
+            });
+          });
+        });
+
+        setQuestions(all);
       } catch (err) {
-        setError('Error fetching group settings');
-        // We still want to show the form so the user can edit anyway
-      } finally {
-        setLoading(false);
+        console.error('Fetch error:', err);
+        setError('Error loading saved questions');
       }
     };
 
     fetchSettings();
-  }, [configEndpoint]);
+  }, []);
 
-  // Add a new blank question (per-question fields)
   const addQuestion = () => {
-    setQuestions([...questions, { question: '', delay: '', preAnswer: '', answer: '' }]);
+    setQuestions(prev => [
+      ...prev,
+      {
+        question: '',
+        delay: '',
+        preAnswer: '',
+        answer: '',
+        fontFace: 'Arial',
+        colorScheme: '#000000',
+      },
+    ]);
   };
 
-  // Update a question field
   const updateQuestion = (index, field, value) => {
-    setQuestions((prev) =>
-      prev.map((q, i) => (i === index ? { ...q, [field]: value } : q))
-    );
+    setQuestions(prev => prev.map((q, i) => (i === index ? { ...q, [field]: value } : q)));
   };
 
-  // Remove a question
-  const removeQuestion = (index) => {
-    setQuestions((prev) => prev.filter((_, i) => i !== index));
+  const removeQuestion = async (index) => {
+    const q = questions[index];
+    if (q.groupId) {
+      try {
+        await axios.delete(`${API_BASE_URL}/research-groups/${q.groupId}/config`, {
+          data: { questionText: q.question },
+        });
+      } catch (err) {
+        console.error('Delete error:', err);
+        setError('Failed to delete question from DynamoDB');
+      }
+    }
+    setQuestions(prev => prev.filter((_, i) => i !== index));
   };
 
-  // Save settings (PUT for “upsert”)
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setLoading(true);
+    setError(null);
 
     try {
-      await axios.put(configEndpoint, {
-        fontFace,
-        colorScheme,
-        questions,
-      });
-      alert('Settings saved successfully.');
+      const updatedQuestions = [...questions];
+
+      for (let i = 0; i < questions.length; i++) {
+        const q = questions[i];
+        const groupId = q.groupId && q.groupId !== "undefined" ? q.groupId : undefined;
+
+        const endpoint = groupId
+          ? `${API_BASE_URL}/research-groups/${groupId}/config`
+          : `${API_BASE_URL}/research-groups/undefined/config`;
+
+        const res = await axios.put(endpoint, {
+          fontFace: q.fontFace,
+          colorScheme: q.colorScheme,
+          questions: [q],
+        });
+
+        // ✅ Assign new groupId if it was undefined
+        if (!q.groupId && res.data.message.includes("Saved group")) {
+          const match = res.data.message.match(/Saved group (\d+)/);
+          if (match) {
+            updatedQuestions[i].groupId = match[1];
+          }
+        }
+      }
+
+      setQuestions(updatedQuestions);
+      alert(`${questions.length} questions saved successfully!`);
     } catch (err) {
-      setError('Error saving group settings');
+      console.error('Save error:', err);
+      setError('Error saving one or more questions.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -82,130 +123,103 @@ const GroupSettings = ({ groupId }) => {
 
   return (
     <div className="container" style={{ padding: '2rem' }}>
-      <h1>Group Settings - Survey Builder</h1>
-      {loading && <p>Loading settings...</p>}
+      <h1>Group Settings – Survey Builder</h1>
+      {loading && <p>Saving settings...</p>}
       {error && <p style={{ color: 'red' }}>{error}</p>}
 
-      {/* Always render the form, even if error */}
       <form onSubmit={handleSubmit}>
-        {/* Global Settings */}
-        <div>
-          <label>Font Face:</label>
-          <select
-            value={fontFace}
-            onChange={(e) => setFontFace(e.target.value)}
-            style={inputStyle}
-          >
-            <option value="Arial">Arial</option>
-            <option value="Times New Roman">Times New Roman</option>
-            <option value="Courier New">Courier New</option>
-          </select>
-        </div>
-
-        <div>
-          <label>Color Scheme:</label>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '1rem',
-              marginBottom: '0.75rem',
-            }}
-          >
-            <input
-              type="color"
-              value={colorScheme}
-              onChange={(e) => setColorScheme(e.target.value)}
-              style={{ ...inputStyle, padding: '0.5rem', width: '50px', margin: 0 }}
-            />
-            {/* Preview Box */}
-            <div
-              style={{
-                width: '30px',
-                height: '30px',
-                borderRadius: '4px',
-                border: '1px solid #ccc',
-                backgroundColor: colorScheme,
-              }}
-            />
-          </div>
-        </div>
-
-        <hr />
-
         <h2>Questions</h2>
         {questions.map((q, index) => (
           <div
             key={index}
             style={{
+              border: '1px solid #ccc',
               marginBottom: '1.5rem',
-              border: '1px solid #eee',
               padding: '1rem',
-              borderRadius: '8px',
             }}
           >
             <h3>Question {index + 1}</h3>
-            <div style={{ marginBottom: '0.75rem' }}>
-              <label>Question Text:</label>
+            {q.groupId && (
+              <p style={{ fontSize: '0.85rem', color: '#666' }}>
+                Saved in Group ID: {q.groupId}
+              </p>
+            )}
+
+            <label>Font Face:</label>
+            <select
+              value={q.fontFace}
+              onChange={(e) => updateQuestion(index, 'fontFace', e.target.value)}
+              style={inputStyle}
+            >
+              <option value="Arial">Arial</option>
+              <option value="Times New Roman">Times New Roman</option>
+              <option value="Courier New">Courier New</option>
+            </select>
+
+            <label>Color Scheme:</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
               <input
-                type="text"
-                value={q.question}
-                onChange={(e) => updateQuestion(index, 'question', e.target.value)}
-                required
-                style={inputStyle}
+                type="color"
+                value={q.colorScheme}
+                onChange={(e) => updateQuestion(index, 'colorScheme', e.target.value)}
+                style={{ width: '50px', height: '40px' }}
+              />
+              <div
+                style={{
+                  width: '30px',
+                  height: '30px',
+                  backgroundColor: q.colorScheme,
+                  border: '1px solid #ccc',
+                }}
               />
             </div>
-            <div style={{ marginBottom: '0.75rem' }}>
-              <label>Delay Parameters (ms):</label>
-              <input
-                type="number"
-                placeholder="e.g., 1000"
-                value={q.delay}
-                onChange={(e) => updateQuestion(index, 'delay', e.target.value)}
-                style={inputStyle}
-              />
-            </div>
-            <div style={{ marginBottom: '0.75rem' }}>
-              <label>Pre-Answer Messaging:</label>
-              <input
-                type="text"
-                placeholder="Type your pre-answer message"
-                value={q.preAnswer}
-                onChange={(e) => updateQuestion(index, 'preAnswer', e.target.value)}
-                style={inputStyle}
-              />
-            </div>
-            <div style={{ marginBottom: '0.75rem' }}>
-              <label>Answer:</label>
-              <textarea
-                placeholder="Enter answer"
-                value={q.answer}
-                onChange={(e) => updateQuestion(index, 'answer', e.target.value)}
-                required
-                style={{ ...inputStyle, minHeight: '80px' }}
-              />
-            </div>
+
+            <label>Question Text:</label>
+            <input
+              type="text"
+              value={q.question}
+              onChange={(e) => updateQuestion(index, 'question', e.target.value)}
+              style={inputStyle}
+              required
+            />
+
+            <label>Delay (seconds):</label>
+            <input
+              type="number"
+              value={q.delay}
+              onChange={(e) => updateQuestion(index, 'delay', e.target.value)}
+              style={inputStyle}
+            />
+
+            <label>Pre-Answer:</label>
+            <input
+              type="text"
+              value={q.preAnswer}
+              onChange={(e) => updateQuestion(index, 'preAnswer', e.target.value)}
+              style={inputStyle}
+            />
+
+            <label>Answer:</label>
+            <textarea
+              value={q.answer}
+              onChange={(e) => updateQuestion(index, 'answer', e.target.value)}
+              style={{ ...inputStyle, minHeight: '60px' }}
+              required
+            />
+
             <button
               type="button"
               onClick={() => removeQuestion(index)}
-              style={{ padding: '0.75rem 1rem', marginBottom: '0.75rem' }}
+              style={{ marginTop: '1rem' }}
             >
               Remove Question
             </button>
-            <hr />
           </div>
         ))}
-        <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
-          <button
-            type="button"
-            onClick={addQuestion}
-            style={{ padding: '0.75rem 1.25rem' }}
-          >
-            Add Question
-          </button>
-          <button type="submit" style={{ padding: '0.75rem 1.25rem' }}>
-            Save Settings
-          </button>
+
+        <div style={{ display: 'flex', gap: '1rem' }}>
+          <button type="button" onClick={addQuestion}>Add Question</button>
+          <button type="submit">Save Settings</button>
         </div>
       </form>
     </div>

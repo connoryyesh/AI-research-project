@@ -1,291 +1,243 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import Closed from './Closed';
+
+// API Endpoints
+const SURVEY_STATUS_API = 'https://qvyovlq8u4.execute-api.us-east-2.amazonaws.com/survey-status';
+const FIXED_QUESTIONS_API = 'https://5ybxfcfpw0.execute-api.us-east-2.amazonaws.com/fixed-questions';
+const ASK_API               = 'https://5ybxfcfpw0.execute-api.us-east-2.amazonaws.com/ask';
+const RATE_API              = 'https://5ybxfcfpw0.execute-api.us-east-2.amazonaws.com/rate';
+const INCREMENT_COUNTER_API = 'https://psx08kge8h.execute-api.us-east-2.amazonaws.com/incrementSurveyCounter';
 
 const SimulatedAIPage = () => {
   const navigate = useNavigate();
 
-  // State for questions, selected question, API answer messages, rating, etc.
+  // Survey open status
+  const [isSurveyOpen, setIsSurveyOpen] = useState(null);
+
+  // Question / Answer states
   const [questions, setQuestions] = useState([]);
   const [selectedQuestion, setSelectedQuestion] = useState(null);
-  const [preMessage, setPreMessage] = useState("");
-  const [finalAnswer, setFinalAnswer] = useState("");
+  const [preMessage, setPreMessage] = useState('');
+  const [finalAnswer, setFinalAnswer] = useState('');
   const [rating, setRating] = useState(0);
 
-  // New states for controlling the different popups/modals.
-  const [showConsent, setShowConsent] = useState(true);        // Pre-consent modal state
-  const [showPopup, setShowPopup] = useState(false);             // "Explore scenarios" popup state
-  const [showThankYouPopup, setShowThankYouPopup] = useState(false); // Thank you modal state
+  // Styling for final answer
+  const [answerColor, setAnswerColor] = useState('#000');
+  const [answerFont, setAnswerFont] = useState('Arial');
 
-  // Fetch fixed questions when the component mounts.
+  // Modals / Popups
+  const [showConsent, setShowConsent] = useState(true);
+  const [showPopup, setShowPopup] = useState(false);
+  const [showThankYouPopup, setShowThankYouPopup] = useState(false);
+
+  // Check if survey is open
   useEffect(() => {
-    fetch("https://5ybxfcfpw0.execute-api.us-east-2.amazonaws.com/fixed-questions")
-      .then(res => {
-        if (!res.ok) throw new Error(`GET /fixed-questions failed: ${res.status}`);
-        return res.json();
-      })
-      .then(data => setQuestions(data))
-      .catch(err => console.error("Error fetching questions:", err));
+    async function checkSurveyStatus() {
+      try {
+        const res = await fetch(SURVEY_STATUS_API);
+        const data = await res.json();
+        setIsSurveyOpen(data.isOpen);
+      } catch (err) {
+        console.error('Error checking survey status:', err);
+        setIsSurveyOpen(false);
+      }
+    }
+    checkSurveyStatus();
   }, []);
 
-  // -----------------------------------
-  // Handlers for Pre-Consent Modal
-  // -----------------------------------
-  const handleAcceptConsent = () => {
-    setShowConsent(false);
-    setShowPopup(true);
-  };
+  // Load fixed questions
+  useEffect(() => {
+    async function loadQuestions() {
+      try {
+        const res = await fetch(FIXED_QUESTIONS_API);
+        if (!res.ok) throw new Error(`GET /fixed-questions failed: ${res.status}`);
+        const data = await res.json();
+        setQuestions(data);
+      } catch (err) {
+        console.error('Error fetching questions:', err);
+      }
+    }
+    loadQuestions();
+  }, []);
 
-  const handleDeclineConsent = () => {
-    // If the user declines consent, log them out.
-    navigate('/survey/logout');
-  };
+  // Consent handlers
+  const handleAcceptConsent  = () => { setShowConsent(false); setShowPopup(true); };
+  const handleDeclineConsent = () => { navigate('/survey/logout'); };
 
-  // -----------------------------------
-  // Handler for Original Popup (Scenarios Info)
-  // -----------------------------------
-  const handleClosePopup = () => {
-    setShowPopup(false);
-  };
+  // Initial info popup
+  const handleClosePopup = () => { setShowPopup(false); };
 
-  // -----------------------------------
-  // Question selection logic
-  // -----------------------------------
+  // When a question is selected
   const handleSelectQuestion = async (q) => {
     setSelectedQuestion(q);
-    setPreMessage("");
-    setFinalAnswer("");
+    setPreMessage('');
+    setFinalAnswer('');
     setRating(0);
+    setAnswerColor('#000');
+    setAnswerFont('Arial');
 
-    // Pre-phase API call
+    // Pre-phase
     try {
-      const res = await fetch("https://5ybxfcfpw0.execute-api.us-east-2.amazonaws.com/ask", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ questionId: q.id, phase: "pre" })
+      const res = await fetch(ASK_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ questionId: q.id, phase: 'pre' })
       });
       if (!res.ok) throw new Error(`POST /ask (pre) failed: ${res.status}`);
       const data = await res.json();
-      setPreMessage(data.preAnswerMessage || "");
+      setPreMessage(data.preAnswerMessage || '');
     } catch (err) {
-      console.error("Error fetching pre-answer:", err);
-      setPreMessage("Error retrieving pre-answer.");
+      console.error('Error fetching pre-answer:', err);
+      setPreMessage('Error retrieving pre-answer.');
     }
 
-    // Final-phase API call (the delay is handled in the backend)
+    // Final-phase
     try {
-      const res2 = await fetch("https://5ybxfcfpw0.execute-api.us-east-2.amazonaws.com/ask", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ questionId: q.id, phase: "final" })
+      const res2 = await fetch(ASK_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ questionId: q.id, phase: 'final' })
       });
       if (!res2.ok) throw new Error(`POST /ask (final) failed: ${res2.status}`);
       const data2 = await res2.json();
-      setFinalAnswer(data2.finalAnswer || "");
+      setFinalAnswer(data2.finalAnswer || '');
+      if (data2.colorScheme) setAnswerColor(data2.colorScheme);
+      if (data2.fontFace)    setAnswerFont(data2.fontFace);
     } catch (err) {
-      console.error("Error fetching final answer:", err);
-      setFinalAnswer("Error retrieving final answer.");
+      console.error('Error fetching final answer:', err);
+      setFinalAnswer('Error retrieving final answer.');
     }
   };
 
-  // -----------------------------------
-  // Rating submission logic
-  // -----------------------------------
+  // Submit rating
   const handleRate = async () => {
     if (!selectedQuestion) return;
     try {
-      const res = await fetch("https://5ybxfcfpw0.execute-api.us-east-2.amazonaws.com/rate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const res = await fetch(RATE_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ questionId: selectedQuestion.id, rating })
       });
       if (!res.ok) throw new Error(`POST /rate failed: ${res.status}`);
       const data = await res.json();
       alert(`Rating submitted! ${data.message}`);
     } catch (err) {
-      console.error("Error rating answer:", err);
-      alert("Failed to submit rating.");
+      console.error('Error rating answer:', err);
+      alert('Failed to submit rating.');
     }
   };
 
-  // -----------------------------------
-  // Star rating UI
-  // -----------------------------------
-  const renderStars = () => {
-    const stars = [];
-    for (let i = 1; i <= 5; i++) {
-      stars.push(
+  // Render star rating
+  const renderStars = () => (
+    <div>
+      {[1,2,3,4,5].map(i => (
         <span
           key={i}
           onClick={() => setRating(i)}
-          style={{
-            cursor: 'pointer',
-            fontSize: '1.5rem',
-            color: i <= rating ? 'gold' : '#ccc',
-            marginRight: '0.2rem'
-          }}
-        >
-          ★
-        </span>
-      );
-    }
-    return <div>{stars}</div>;
-  };
+          style={{ cursor: 'pointer', fontSize: '1.5rem', color: i <= rating ? 'gold' : '#ccc', marginRight: '0.2rem' }}
+        >★</span>
+      ))}
+    </div>
+  );
 
-  // -----------------------------------
-  // Finishing logic to show Thank You popup
-  // -----------------------------------
-  const handleFinish = () => {
+  // Finish survey
+  const handleFinish = async () => {
+    try {
+      const res = await fetch(INCREMENT_COUNTER_API, { method: 'POST' });
+      if (!res.ok) throw new Error(`Error updating survey count: ${res.status}`);
+      const data = await res.json();
+      console.log('Updated survey count:', data.count);
+    } catch (err) {
+      console.error('Error finishing survey:', err);
+    }
     setShowThankYouPopup(true);
   };
 
-  const handleThankYouLogout = () => {
-    // Log the user out by navigating to the logout route.
-    navigate('/survey/logout');
-  };
+  const handleThankYouLogout = () => { navigate('/survey/logout'); };
 
-  // -----------------------------------
-  // Styling for overlays and modals.
-  // -----------------------------------
-  const overlayStyle = {
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    width: '100%',
-    height: '100%',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 1000
-  };
-  const modalStyle = {
-    backgroundColor: 'white',
-    padding: '2rem',
-    borderRadius: '8px',
-    textAlign: 'center'
-  };
-  const containerStyle = { display: 'flex', gap: '2rem', padding: '1rem' };
-  const leftStyle = { flex: 1, border: '1px solid #ccc', padding: '1rem' };
-  const rightStyle = { flex: 1, border: '1px solid #ccc', padding: '1rem' };
+  // Styles
+  const overlayStyle   = { position:'fixed', top:0, left:0, width:'100%', height:'100%', backgroundColor:'rgba(0,0,0,0.5)', display:'flex', justifyContent:'center', alignItems:'center', zIndex:1000 };
+  const modalStyle     = { backgroundColor:'white', padding:'2rem', borderRadius:'8px', textAlign:'center' };
+  const containerStyle = { display:'flex', gap:'2rem', padding:'1rem' };
+  const leftStyle      = { flex:1, border:'1px solid #ccc', padding:'1rem' };
+  const rightStyle     = { flex:1, border:'1px solid #ccc', padding:'1rem' };
+
+  // Loading or closed states
+  if (isSurveyOpen === null) return <div>Loading...</div>;
+  if (!isSurveyOpen)        return <Closed />;
 
   return (
     <div style={{ fontFamily: 'sans-serif' }}>
-      {/* 1) PRE-CONSENT MODAL */}
+      {/* Consent Modal */}
       {showConsent && (
         <div style={overlayStyle}>
           <div style={modalStyle}>
-            <p style={{ marginBottom: '1rem' }}>
-              This study is part of ongoing research. Do you consent to participate?
-            </p>
+            <p style={{ marginBottom: '1rem' }}>This study is part of ongoing research. Do you consent to participate?</p>
             <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem' }}>
-              <button
-                onClick={handleAcceptConsent}
-                style={{ padding: '0.5rem 1rem', cursor: 'pointer', backgroundColor: '#500000', color: '#fff', border: 'none', borderRadius: '8px' }}
-              >
-                Accept
-              </button>
-              <button
-                onClick={handleDeclineConsent}
-                style={{ padding: '0.5rem 1rem', cursor: 'pointer', backgroundColor: '#aaa', color: '#000', border: 'none', borderRadius: '8px' }}
-              >
-                Decline
-              </button>
+              <button onClick={handleAcceptConsent} style={{ padding: '0.5rem 1rem', backgroundColor: '#500000', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>Accept</button>
+              <button onClick={handleDeclineConsent} style={{ padding: '0.5rem 1rem', backgroundColor: '#aaa', color: '#000', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>Decline</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* 2) ORIGINAL POPUP (Scenario Information), only shown if consent was accepted */}
+      {/* Initial Info Popup */}
       {!showConsent && showPopup && (
         <div style={overlayStyle}>
           <div style={modalStyle}>
-            <p>
-              Please explore each of the AI scenarios created. Be sure to interact with and rate each scenario.
-            </p>
-            <button onClick={handleClosePopup} style={{ padding: '0.5rem 1rem', cursor: 'pointer' }}>
-              Okay
-            </button>
+            <p>Please interact with each of the AI questions. To do so, click on a question, and wait for the AI to respond. After watching its response, please navigate to the right side of the page and rate how trustworthy the AI is (1 star being not trustworthy, 5 stars being extremely trustworthy). Once you have interacted with each of the prompts, please select the finish button to end the experience.</p>
+            <button onClick={handleClosePopup} style={{ padding: '0.5rem 1rem', cursor: 'pointer' }}>Okay</button>
           </div>
         </div>
       )}
 
-      {/* 3) Thank You Popup when finishing the survey */}
+      {/* Thank You Modal */}
       {showThankYouPopup && (
         <div style={overlayStyle}>
           <div style={modalStyle}>
-            <p style={{ marginBottom: '1rem' }}>
-              Thank you for participating in this survey.
-            </p>
-            <button
-              onClick={handleThankYouLogout}
-              style={{ padding: '0.5rem 1rem', cursor: 'pointer', backgroundColor: '#500000', color: '#fff', border: 'none', borderRadius: '8px' }}
-            >
-              Logout
-            </button>
+            <p style={{ marginBottom: '1rem' }}>Thank you for participating in this survey.</p>
+            <button onClick={handleThankYouLogout} style={{ padding: '0.5rem 1rem', backgroundColor: '#500000', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>Logout</button>
           </div>
         </div>
       )}
 
-      {/* 4) MAIN PAGE CONTENT (only visible after user consents) */}
+      {/* Main Content */}
       {!showConsent && (
         <>
           <h1 style={{ textAlign: 'center' }}>AI Dashboard</h1>
           <div style={containerStyle}>
-            {/* Left Panel: Questions */}
             <div style={leftStyle}>
               <h2>Questions</h2>
-              {questions.map((q) => (
+              {questions.map(q => (
                 <div key={q.id} style={{ margin: '0.5rem 0' }}>
-                  <button onClick={() => handleSelectQuestion(q)} style={{ cursor: 'pointer' }}>
-                    {q.question}
-                  </button>
+                  <button onClick={() => handleSelectQuestion(q)} style={{ cursor: 'pointer' }}>{q.question}</button>
                 </div>
               ))}
-
               {selectedQuestion && (
                 <div style={{ marginTop: '1rem' }}>
                   <h3>Selected: {selectedQuestion.question}</h3>
-                  {preMessage && (
-                    <p style={{ fontStyle: 'italic', color: '#666', marginTop: '0.5rem' }}>
-                      {preMessage}
-                    </p>
-                  )}
-                  {finalAnswer && (
-                    <p style={{ fontWeight: 'bold', marginTop: '0.5rem' }}>
-                      {finalAnswer}
-                    </p>
-                  )}
+                  {preMessage     && <p style={{ fontStyle: 'italic', color: '#666', marginTop: '0.5rem'     }}>{preMessage}</p>}
+                  {finalAnswer    && <p style={{ fontWeight: 'bold', marginTop: '0.5rem', color: answerColor, fontFamily: answerFont }}>{finalAnswer}</p>}
                 </div>
               )}
             </div>
-
-            {/* Right Panel: Rating */}
             <div style={rightStyle}>
               <h2>Rate the Answer</h2>
               {!selectedQuestion ? (
                 <p>Select a question on the left first.</p>
               ) : (
                 <>
-                  <div style={{ margin: '1rem 0' }}>
-                    {renderStars()}
-                  </div>
-                  <button
-                    onClick={handleRate}
-                    disabled={!finalAnswer}
-                    style={{ padding: '0.5rem 1rem', cursor: 'pointer' }}
-                  >
-                    Submit Rating
-                  </button>
+                  <div style={{ margin: '1rem 0' }}>{renderStars()}</div>
+                  <button onClick={handleRate} disabled={!finalAnswer} style={{ padding: '0.5rem 1rem', cursor: 'pointer' }}>Submit Rating</button>
                 </>
               )}
             </div>
           </div>
 
-          {/* Finish button */}
+          {/* Finish Button */}
           <div style={{ textAlign: 'center', margin: '2rem 0' }}>
-            <button onClick={handleFinish} style={{ padding: '0.5rem 1rem', cursor: 'pointer' }}>
-              Finished
-            </button>
+            <button onClick={handleFinish} style={{ padding: '0.5rem 1rem', cursor: 'pointer' }}>Finished</button>
           </div>
         </>
       )}
