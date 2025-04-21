@@ -1,157 +1,84 @@
-// App.js — Main router for the application.
-// If adding/removing routes or roles, ensure they’re declared and guarded properly.
+// Root-level React app file. Defines all frontend routes and wraps them in authentication logic.
+// If you need to add new pages or change access control rules, this is where routing behavior starts.
 
-// App.js
 import React from 'react';
-import {
-  BrowserRouter as Router,
-  Route,
-  Routes,
-  Navigate
-} from 'react-router-dom';
-import { Amplify } from 'aws-amplify';
-import '@aws-amplify/ui-react/styles.css';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 
-// Import AWS configuration
-import awsConfig from './aws-exports';
+// Auth and access control
+import { AuthProvider } from './contexts/AuthContext';  // Provides user context to all children
+import ProtectedRoute from './ProtectedRoute';          // Restricts route access to logged-in users
 
-// Import Auth Context
-import { AuthProvider, useAuth } from './contexts/AuthContext';
+// Standalone public pages (no auth needed)
+import SignUp from './SignUp';
+import SignIn from './SignIn';
+import Survey from './Survey'; // Participant survey page
 
-// Import components for Admin, Researcher, and SurveyTaker
-import AdminLayout from './pages/AdminLayout';
-import ResearcherLayout from './pages/ResearcherLayout';
-import SurveyTakerLayout from './pages/SurveyTakerLayout';
-import Dashboard from './pages/Dashboard';
-import GroupSettings from './pages/GroupSettings';
-import Logout from './pages/Logout';
-import Login from './pages/Login';
-import UserRoleManagement from './pages/UserRoleManagement';
-import SimulatedAIPage from './pages/SimulatedAIPage';
+// Authenticated app views
+import SimulatedAIPage from './SimulatedAIPage';         // AI simulation experience for participants
 
-// Initialize Amplify with the imported configuration
-Amplify.configure(awsConfig);
+// Layout shells (used to wrap route groups with navigation/sidebars)
+import AdminLayout from './AdminLayout';                 // Used for admin panel routes
+import ResearcherLayout from './ResearcherLayout';       // Used for researcher panel routes
+import SurveyTakerLayout from './SurveyTakerLayout';     // Used for profile view of survey takers
 
-// Protected route component ensures that protected routes are only accessible after authentication.
-const ProtectedRoute = ({ children, requiredRole }) => {
-  const { isAuthenticated, isLoading, user } = useAuth();
-  
-  if (isLoading) {
-    return <div>Loading...</div>;
-  }
-  
-  if (!isAuthenticated) {
-    // Redirect to the /login route if not authenticated.
-    return <Navigate to="/login" replace />;
-  }
-  
-  // If a specific role is required, check it; otherwise, allow the authenticated user.
-  if (requiredRole && user.role !== requiredRole) {
-    if (user.role === 'admin') {
-      return <Navigate to="/admin/dashboard" replace />;
-    } else if (user.role === 'researcher') {
-      return <Navigate to="/researcher/dashboard" replace />;
-    } else {
-      return <Navigate to="/survey" replace />;
-    }
-  }
-  
-  return children;
-};
+// Pages loaded inside layouts
+import Dashboard from './Dashboard';                     // Shared dashboard for Admin/Researcher
+import GroupSettings from './GroupSettings';             // Group configuration tool
+import UserRoleManagement from './UserRoleManagement';   // Admin-only: manage user roles
+import ManageResearchers from './ManageResearchers';     // (Not currently used; candidate for removal/refactor)
+import Closed from './Closed';                           // Fallback screen if survey is unavailable
+import UserProfile from './UserProfile';                 // Profile view for survey takers
 
-const AppRoutes = () => {
-  const { user, isAuthenticated, isLoading } = useAuth();
-  
-  // Prevent any routing until the authentication state has been determined.
-  if (isLoading) {
-    return <div>Loading authentication state...</div>;
-  }
-  
-  return (
-    <Routes>
-      {/* LOGIN ROUTE */}
-      <Route
-        path="/login"
-        element={
-          !isAuthenticated ? (
-            <Login />
-          ) : (
-            // If already authenticated, automatically redirect based on the user’s role.
-            user.role === 'admin' ? (
-              <Navigate to="/admin/dashboard" replace />
-            ) : user.role === 'researcher' ? (
-              <Navigate to="/researcher/dashboard" replace />
-            ) : (
-              <Navigate to="/survey" replace />
-            )
-          )
-        }
-      />
-
-      {/* Redirect the root "/" to the login page */}
-      <Route path="/" element={<Navigate to="/login" replace />} />
-
-      {/* ADMIN ROUTES */}
-      <Route
-        path="/admin"
-        element={
-          <ProtectedRoute requiredRole="admin">
-            <AdminLayout />
-          </ProtectedRoute>
-        }
-      >
-        <Route path="dashboard" element={<Dashboard />} />
-        <Route path="group-settings" element={<GroupSettings />} />
-        <Route path="manage-roles" element={<UserRoleManagement />} />
-        <Route path="logout" element={<Logout />} />
-        <Route path="*" element={<Navigate to="/admin/dashboard" replace />} />
-      </Route>
-
-      {/* RESEARCHER ROUTES */}
-      <Route
-        path="/researcher"
-        element={
-          <ProtectedRoute requiredRole="researcher">
-            <ResearcherLayout />
-          </ProtectedRoute>
-        }
-      >
-        <Route path="dashboard" element={<Dashboard />} />
-        <Route path="group-settings" element={<GroupSettings />} />
-        <Route path="logout" element={<Logout />} />
-        <Route path="*" element={<Navigate to="/researcher/dashboard" replace />} />
-      </Route>
-
-      {/* SURVEY-TAKER ROUTES */}
-      <Route
-        path="/survey"
-        element={
-          <ProtectedRoute requiredRole="survey-taker">
-            <SurveyTakerLayout />
-          </ProtectedRoute>
-        }
-      >
-        {/* The default route and the explicit simulatedAI route both point to SimulatedAIPage */}
-        <Route index element={<SimulatedAIPage />} />
-        <Route path="simulatedAI" element={<SimulatedAIPage />} />
-        <Route path="logout" element={<Logout />} />
-        <Route path="*" element={<Navigate to="/survey" replace />} />
-      </Route>
-
-      {/* Fallback Route: Redirect any unknown paths to the login page */}
-      <Route path="*" element={<Navigate to="/login" replace />} />
-    </Routes>
-  );
-};
-
-// Root app component with authentication context wrapper.
 function App() {
   return (
-    <AuthProvider>
-      <Router>
-        <AppRoutes />
-      </Router>
-    </AuthProvider>
+    <Router>
+      {/* AuthProvider gives access to `currentUser`, `logIn`, `logOut`, etc. throughout the app */}
+      <AuthProvider>
+        <Routes>
+          {/* === Public Routes === */}
+          {/* If adding other non-auth routes like /about or /faq, place them here */}
+          <Route path="/signup" element={<SignUp />} />
+          <Route path="/signin" element={<SignIn />} />
+          <Route path="/survey" element={<Survey />} />
+
+          {/* === Standalone Protected Routes === */}
+          {/* To make a new private page, wrap it in <ProtectedRoute> like below */}
+          <Route
+            path="/simulated-ai"
+            element={
+              <ProtectedRoute>
+                <SimulatedAIPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* === Admin Section (accessed by users with role=admin) === */}
+          {/* Add new admin tools by nesting a new <Route path="new-tool" element={<Component />} /> here */}
+          <Route path="/admin" element={<AdminLayout />}>
+            <Route path="dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+            <Route path="group-settings" element={<ProtectedRoute><GroupSettings /></ProtectedRoute>} />
+            <Route path="manage-roles" element={<ProtectedRoute><UserRoleManagement /></ProtectedRoute>} />
+          </Route>
+
+          {/* === Researcher Section (accessed by users with role=researcher) === */}
+          {/* Note: Researchers see a limited subset of admin pages */}
+          <Route path="/researcher" element={<ResearcherLayout />}>
+            <Route path="dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+            <Route path="group-settings" element={<ProtectedRoute><GroupSettings /></ProtectedRoute>} />
+          </Route>
+
+          {/* === Survey Taker Area (minimal UI, just a profile for now) === */}
+          {/* If expanding user features, add new pages here */}
+          <Route path="/profile" element={<SurveyTakerLayout />}>
+            <Route index element={<ProtectedRoute><UserProfile /></ProtectedRoute>} />
+          </Route>
+
+          {/* === Fallback: Survey closed */}
+          {/* Triggered when survey is marked closed in backend */}
+          <Route path="/survey/closed" element={<Closed />} />
+        </Routes>
+      </AuthProvider>
+    </Router>
   );
 }
 
