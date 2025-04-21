@@ -2,44 +2,48 @@ import React, { useState, useEffect } from 'react';
 import { fetchAuthSession } from 'aws-amplify/auth';
 
 const UserRoleManagement = () => {
+  // === State for list of all Cognito users ===
   const [users, setUsers] = useState([]);
+
+  // === UI/Loading/Error states ===
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState('');
-  
-  // New user form fields
+
+  // === Form input for creating a new user ===
   const [newUserName, setNewUserName] = useState('');
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserRole, setNewUserRole] = useState('survey-taker');
 
-  // Replace with your actual API endpoint
+  // === API base URL to your Lambda backend ===
   const API_BASE_URL = 'https://llbkoyb0a2.execute-api.us-east-2.amazonaws.com';
 
+  // Fetch users on component mount
   useEffect(() => {
     fetchUsers();
   }, []);
 
-  // Fetch users
+  /**
+   * Fetches all users from your Cognito-connected Lambda function.
+   * Requires authorization via ID token.
+   */
   const fetchUsers = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      // Get current admin user's session for the token
       const session = await fetchAuthSession();
       const token = session.tokens.idToken.toString();
 
       const response = await fetch(`${API_BASE_URL}/users`, {
         method: 'GET',
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
+        headers: { Authorization: `Bearer ${token}` }
       });
 
-      if (!response.ok) {
-        throw new Error(`Failed to fetch users: ${response.status}`);
-      }
+      if (!response.ok) throw new Error(`Failed to fetch users: ${response.status}`);
       const data = await response.json();
+
+      // Normalize user data
       setUsers(data.users || []);
     } catch (err) {
       console.error('Error fetching users:', err);
@@ -49,7 +53,10 @@ const UserRoleManagement = () => {
     }
   };
 
-  // Add a new user
+  /**
+   * Sends a POST request to create a new user with a given role.
+   * Cognito will automatically send an invitation or temporary password (if configured).
+   */
   const addUser = async (e) => {
     e.preventDefault();
     if (!newUserEmail) {
@@ -70,10 +77,7 @@ const UserRoleManagement = () => {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          email: newUserEmail,
-          role: newUserRole
-        })
+        body: JSON.stringify({ email: newUserEmail, role: newUserRole })
       });
 
       if (!response.ok) {
@@ -81,9 +85,8 @@ const UserRoleManagement = () => {
         throw new Error(errorData.message || `Failed to add user: ${response.status}`);
       }
 
-      // Refresh the user list
+      // Refresh list & show success
       fetchUsers();
-
       setSuccessMessage(`User ${newUserEmail} added successfully with role: ${newUserRole}`);
       setTimeout(() => setSuccessMessage(''), 3000);
 
@@ -99,7 +102,10 @@ const UserRoleManagement = () => {
     }
   };
 
-  // Update a user's role
+  /**
+   * Updates a Cognito user's role using their internal Cognito username (UUID).
+   * Email address is used for UI but not passed to Cognito directly.
+   */
   const updateUserRole = async (username, newRole) => {
     try {
       setLoading(true);
@@ -108,36 +114,31 @@ const UserRoleManagement = () => {
       const session = await fetchAuthSession();
       const token = session.tokens.idToken.toString();
 
-      // Get the actual Cognito username (UUID) instead of using the email address
-      const userToUpdate = users.find(user => {
-        const userEmail = user.Attributes?.find(attr => attr.Name === 'email')?.Value;
-        return userEmail === username;
-      });
-      
-      if (!userToUpdate) {
-        throw new Error(`User with email ${username} not found`);
-      }
-      
-      // Use the actual username (UUID) from Cognito instead of the email
+      const userToUpdate = users.find(user =>
+        user.Attributes?.find(attr => attr.Name === 'email')?.Value === username
+      );
+      if (!userToUpdate) throw new Error(`User with email ${username} not found`);
+
       const cognitoUsername = userToUpdate.Username;
 
-      const response = await fetch(`${API_BASE_URL}/users/${encodeURIComponent(cognitoUsername)}/role`, {
-        method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ role: newRole })
-      });
+      const response = await fetch(
+        `${API_BASE_URL}/users/${encodeURIComponent(cognitoUsername)}/role`,
+        {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ role: newRole })
+        }
+      );
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.message || `Failed to update user role: ${response.status}`);
+        throw new Error(errorData.message || `Failed to update user role`);
       }
 
-      // Refresh the user list
       fetchUsers();
-
       setSuccessMessage(`Role updated successfully for ${username}`);
       setTimeout(() => setSuccessMessage(''), 3000);
     } catch (err) {
@@ -148,20 +149,23 @@ const UserRoleManagement = () => {
     }
   };
 
-  // Dropdown change handler
+  /**
+   * Confirms then updates a user's role
+   */
   const handleRoleChange = (username, newRole) => {
     if (window.confirm(`Are you sure you want to change this user's role to ${newRole}?`)) {
       updateUserRole(username, newRole);
     }
   };
 
-  // Example roles
+  // Roles allowed in the dropdown
   const availableRoles = ['admin', 'researcher', 'survey-taker'];
 
   return (
     <div className="user-role-management">
       <h2>User Role Management</h2>
 
+      {/* === Error Banner === */}
       {error && (
         <div style={{ color: 'red', background: '#ffeeee', padding: '10px', marginBottom: '20px' }}>
           {error}
@@ -169,13 +173,14 @@ const UserRoleManagement = () => {
         </div>
       )}
 
+      {/* === Success Banner === */}
       {successMessage && (
         <div style={{ color: 'green', background: '#eeffee', padding: '10px', marginBottom: '20px' }}>
           {successMessage}
         </div>
       )}
 
-      {/* Add New User Form */}
+      {/* === Add New User Form === */}
       <div style={{ backgroundColor: '#f9f9f9', padding: '1.5rem', marginBottom: '2rem' }}>
         <h3>Add New User</h3>
         <form onSubmit={addUser}>
@@ -188,7 +193,6 @@ const UserRoleManagement = () => {
               required
             />
           </div>
-
           <div>
             <label>Email:</label>
             <input
@@ -198,7 +202,6 @@ const UserRoleManagement = () => {
               required
             />
           </div>
-
           <div>
             <label>Role:</label>
             <select
@@ -212,14 +215,13 @@ const UserRoleManagement = () => {
               ))}
             </select>
           </div>
-
           <button type="submit" disabled={loading}>
             {loading ? 'Processing...' : 'Add User'}
           </button>
         </form>
       </div>
 
-      {/* Existing Users */}
+      {/* === Existing Users Table === */}
       <div>
         <h3>Existing Users</h3>
         <button onClick={fetchUsers} disabled={loading}>
@@ -245,8 +247,7 @@ const UserRoleManagement = () => {
                   user.Attributes?.find((attr) => attr.Name === 'name')?.Value || 'N/A';
                 const userEmail =
                   user.Attributes?.find((attr) => attr.Name === 'email')?.Value ||
-                  user.Username ||
-                  'N/A';
+                  user.Username || 'N/A';
                 const userRole =
                   user.Role ||
                   user.Attributes?.find((attr) => attr.Name === 'custom:role')?.Value ||
@@ -271,11 +272,7 @@ const UserRoleManagement = () => {
                     <td>
                       <button
                         onClick={() => {
-                          if (
-                            window.confirm(
-                              `Apply the current role for ${userName}?`
-                            )
-                          ) {
+                          if (window.confirm(`Apply the current role for ${userName}?`)) {
                             updateUserRole(userEmail, userRole);
                           }
                         }}
