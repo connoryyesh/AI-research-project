@@ -1,19 +1,20 @@
 import React, { useState } from 'react';
 
 const ManageResearchers = () => {
-  // State for researcher email and name
-  const [email, setEmail] = useState('');
-  const [name, setName] = useState('');
-  const [message, setMessage] = useState('');
-  const [researcherCount, setResearcherCount] = useState(0);
+  // === State management ===
+  const [email, setEmail] = useState('');                   // Email of researcher to add/remove
+  const [name, setName] = useState('');                     // Name of researcher to add
+  const [message, setMessage] = useState('');               // UI feedback for success/error
+  const [researcherCount, setResearcherCount] = useState(0); // Session-based count of added researchers
 
-  // Hardcode the projectId as "1" (adjust if needed)
+  // === Configuration: Project ID and base API path ===
+  // This projectId is hardcoded to "1". If your app will eventually allow project switching,
+  // consider lifting this to a prop or context variable.
   const projectId = "1";
+  const baseApiUrl = `https://6tydwlnmqj.execute-api.us-east-2.amazonaws.com/projects/${projectId}/researchers`;
 
-  // Base API URL for your Lambda
-  const baseApiUrl = `https://6tydwlnmqj.execute-api.us-east-2.amazonaws.com/projects/1/researchers`;
-
-  // Add researcher via POST - compatible with your existing Lambda
+  // === Adds a researcher via POST ===
+  // This calls your backend Lambda configured at /projects/{id}/researchers
   const handleAddResearcher = async () => {
     if (!name || !email) {
       setMessage('Please enter both name and email');
@@ -24,11 +25,7 @@ const ManageResearchers = () => {
       const response = await fetch(baseApiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          email, 
-          name
-          // No extra parameters that might confuse the existing Lambda
-        })
+        body: JSON.stringify({ email, name }) // Expected format by the Lambda function
       });
 
       if (!response.ok) {
@@ -36,14 +33,10 @@ const ManageResearchers = () => {
       }
 
       const result = await response.json();
-      
-      // Update the local count of researchers added
-      setResearcherCount(prevCount => prevCount + 1);
-      
-      // Display success message
+
+      // On success: increment UI counter, show confirmation, clear fields
+      setResearcherCount(prev => prev + 1);
       setMessage(`Researcher ${email} added to project ${projectId} (${researcherCount + 1})`);
-      
-      // Clear the form fields after successful addition
       setEmail('');
       setName('');
     } catch (error) {
@@ -52,7 +45,8 @@ const ManageResearchers = () => {
     }
   };
 
-  // Remove researcher via DELETE
+  // === Removes a researcher via DELETE ===
+  // Assumes the backend supports DELETE at /projects/{id}/researchers/{email}
   const handleRemoveResearcher = async () => {
     if (!email) {
       setMessage('Please enter an email to remove');
@@ -60,23 +54,15 @@ const ManageResearchers = () => {
     }
 
     try {
-      // The DELETE endpoint is /projects/{projectId}/researchers/{researcherId}
       const deleteUrl = `${baseApiUrl}/${email}`;
-
-      const response = await fetch(deleteUrl, {
-        method: 'DELETE'
-      });
+      const response = await fetch(deleteUrl, { method: 'DELETE' });
 
       if (!response.ok) {
         throw new Error(`DELETE failed with status ${response.status}`);
       }
 
       const result = await response.json();
-      
-      // Display success or custom message from the API
       setMessage(result.message || 'Researcher removed successfully');
-      
-      // Clear the email field after successful removal
       setEmail('');
     } catch (error) {
       console.error('Error removing researcher:', error);
@@ -87,12 +73,13 @@ const ManageResearchers = () => {
   return (
     <div className="container" style={{ textAlign: 'center' }}>
       <h2>Manage Researchers (Project ID: {projectId})</h2>
-      
+
+      {/* Count displayed per session only — useful for real-time feedback */}
       <p style={{ fontSize: '0.9rem', color: '#666' }}>
         Researchers added in this session: {researcherCount}
       </p>
 
-      {/* Name Field */}
+      {/* === Name input === */}
       <input
         type="text"
         placeholder="Enter Researcher Name"
@@ -106,7 +93,7 @@ const ManageResearchers = () => {
         }}
       />
 
-      {/* Email Field */}
+      {/* === Email input === */}
       <input
         type="email"
         placeholder="Enter Researcher Email"
@@ -120,7 +107,7 @@ const ManageResearchers = () => {
         }}
       />
 
-      {/* Action Buttons */}
+      {/* === Action Buttons: Add + Remove === */}
       <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginTop: '1rem' }}>
         <button onClick={handleAddResearcher} style={{ padding: '0.75rem 1.25rem' }}>
           Add Researcher
@@ -130,7 +117,7 @@ const ManageResearchers = () => {
         </button>
       </div>
 
-      {/* Status Message */}
+      {/* === Feedback message === */}
       {message && <p style={{ marginTop: '1rem' }}>{message}</p>}
     </div>
   );
